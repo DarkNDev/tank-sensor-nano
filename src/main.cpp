@@ -61,21 +61,27 @@
 #include <Arduino.h>
 
 // ---------------- Pin assignment ----------------
-const uint8_t PIN_PROBE_LOW  = 5;
+const uint8_t PIN_PROBE_LOW = 5;
 const uint8_t PIN_PROBE_FULL = 6;
 
 const uint8_t PIN_RELAY_START_1 = 8;
 const uint8_t PIN_RELAY_START_2 = 9;
-const uint8_t PIN_RELAY_STOP    = 10;
+const uint8_t PIN_RELAY_STOP = 10;
 
-const uint8_t PIN_STATUS_LED  = 13;
+const uint8_t PIN_LOW_PROBE_LED = 11;
+const uint8_t PIN_FULL_PROBE_LED = 12;
+const uint8_t PIN_MOTOR_STATUS_LED = 13;
 
 // ---------------- Config ----------------
-const bool RELAY_ACTIVE_LOW = true;           // most relay modules trigger on LOW; set false for active-HIGH boards
-const unsigned long RELAY_PULSE_MS   = 600;   // how long to "press" the start/stop button
-const unsigned long DEBOUNCE_MS      = 300;   // probe must be stable this long before it's trusted
-const unsigned long SAMPLE_INTERVAL_MS = 50;  // how often to sample the probes
-const unsigned long STATUS_PRINT_MS  = 1000;  // how often to print status over Serial
+const bool RELAY_ACTIVE_LOW =
+    true; // most relay modules trigger on LOW; set false for active-HIGH boards
+const unsigned long RELAY_PULSE_MS =
+    600; // how long to "press" the start/stop button
+const unsigned long DEBOUNCE_MS =
+    300; // probe must be stable this long before it's trusted
+const unsigned long SAMPLE_INTERVAL_MS = 50; // how often to sample the probes
+const unsigned long STATUS_PRINT_MS =
+    1000; // how often to print status over Serial
 
 // ---------------- State ----------------
 bool motorRunning = false;
@@ -92,9 +98,9 @@ unsigned long lastStatusPrint = 0;
 
 // Non-blocking relay pulse tracking
 bool startPulseActive = false;
-bool stopPulseActive  = false;
+bool stopPulseActive = false;
 unsigned long startPulseBegin = 0;
-unsigned long stopPulseBegin  = 0;
+unsigned long stopPulseBegin = 0;
 
 // ---------------- Helpers ----------------
 void relayWrite(uint8_t pin, bool energize) {
@@ -110,7 +116,8 @@ void beginStartPulse() {
   startPulseBegin = millis();
   relayWrite(PIN_RELAY_START_1, true);
   relayWrite(PIN_RELAY_START_2, true);
-  Serial.println(F("[MOTOR] LOW probe dry -> START pulse fired (both start relays)"));
+  Serial.println(
+      F("[MOTOR] LOW probe dry -> START pulse fired (both start relays)"));
 }
 
 void beginStopPulse() {
@@ -136,8 +143,10 @@ void serviceRelayPulses() {
 
 // Debounces one probe pin, updating stableState only after the raw
 // reading has held steady for DEBOUNCE_MS. Returns the current stable state.
-bool debounceProbe(uint8_t pin, bool &stableState, bool &lastRaw, unsigned long &lastChangeTime) {
-  bool raw = (digitalRead(pin) == LOW); // LOW = wet (probe bridged to GND through water)
+bool debounceProbe(uint8_t pin, bool &stableState, bool &lastRaw,
+                   unsigned long &lastChangeTime) {
+  bool raw = (digitalRead(pin) ==
+              LOW); // LOW = wet (probe bridged to GND through water)
 
   if (raw != lastRaw) {
     lastChangeTime = millis();
@@ -160,13 +169,15 @@ void setup() {
   pinMode(PIN_RELAY_START_1, OUTPUT);
   pinMode(PIN_RELAY_START_2, OUTPUT);
   pinMode(PIN_RELAY_STOP, OUTPUT);
-  pinMode(PIN_STATUS_LED, OUTPUT);
+  pinMode(PIN_MOTOR_STATUS_LED, OUTPUT);
+  pinMode(PIN_LOW_PROBE_LED, OUTPUT);
+  pinMode(PIN_FULL_PROBE_LED, OUTPUT);
 
   // Relays start de-energized
   relayWrite(PIN_RELAY_START_1, false);
   relayWrite(PIN_RELAY_START_2, false);
   relayWrite(PIN_RELAY_STOP, false);
-  digitalWrite(PIN_STATUS_LED, LOW);
+  digitalWrite(PIN_MOTOR_STATUS_LED, LOW);
 
   Serial.println(F("Water tank controller booted."));
 }
@@ -178,29 +189,45 @@ void loop() {
   if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
     lastSampleTime = now;
 
-    debounceProbe(PIN_PROBE_LOW,  lowWet,  lastRawLow,  lastChangeLow);
+    debounceProbe(PIN_PROBE_LOW, lowWet, lastRawLow, lastChangeLow);
     debounceProbe(PIN_PROBE_FULL, fullWet, lastRawFull, lastChangeFull);
 
     // 2. Decide on motor action — edge-triggered, fires once per transition
     if (!motorRunning && !lowWet) {
       // Water has dropped below the LOW probe -> start filling
       motorRunning = true;
-      digitalWrite(PIN_STATUS_LED, HIGH);
+      digitalWrite(PIN_MOTOR_STATUS_LED, HIGH);
       beginStartPulse();
     } else if (motorRunning && fullWet) {
       // Water has reached the FULL probe -> stop filling
       motorRunning = false;
-      digitalWrite(PIN_STATUS_LED, LOW);
+      digitalWrite(PIN_MOTOR_STATUS_LED, LOW);
       beginStopPulse();
     }
   }
 
-  // 3. Periodic status print (kept separate from sampling so it's easy to slow down/remove)
+  // 3. Periodic status print (kept separate from sampling so it's easy to slow
+  // down/remove)
   if (now - lastStatusPrint >= STATUS_PRINT_MS) {
     lastStatusPrint = now;
-    Serial.print(F("LOW="));   Serial.print(lowWet  ? F("WET") : F("DRY"));
-    Serial.print(F(" FULL=")); Serial.print(fullWet ? F("WET") : F("DRY"));
-    Serial.print(F(" MOTOR=")); Serial.println(motorRunning ? F("RUNNING") : F("STOPPED"));
+    Serial.print(F("LOW="));
+    Serial.print(lowWet ? F("WET") : F("DRY"));
+    Serial.print(F(" FULL="));
+    Serial.print(fullWet ? F("WET") : F("DRY"));
+    Serial.print(F(" MOTOR="));
+    Serial.println(motorRunning ? F("RUNNING") : F("STOPPED"));
+  }
+
+  if (lowWet) {
+    digitalWrite(PIN_LOW_PROBE_LED, HIGH);
+  } else {
+    digitalWrite(PIN_LOW_PROBE_LED, LOW);
+  }
+
+  if (fullWet) {
+    digitalWrite(PIN_FULL_PROBE_LED, HIGH);
+  } else {
+    digitalWrite(PIN_FULL_PROBE_LED, LOW);
   }
 
   // 4. Always service any active relay pulse (non-blocking timing)
